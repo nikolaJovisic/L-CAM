@@ -13,9 +13,9 @@ import L_CAM_VGG16.my_optim as my_optim
 import torch.nn.functional as F
 from utils.avgMeter import AverageMeter
 from utils import Metrics
-from utils.LoadData import data_loader
+from utils.LoadData import data_loader, mammo_loader
 from utils.Restore import restore
-from models import VGG16_L_CAM_Fm, VGG16_L_CAM_Img, VGG16_7x7_L_CAM_Img, VGG16_L_CAM_FmA, VGG16_L_CAM_ImgA
+from models import VGG16_L_CAM_Fm, VGG16_L_CAM_Img, VGG16_7x7_L_CAM_Img, VGG16_L_CAM_ImgA
 
 
 
@@ -23,20 +23,18 @@ from models import VGG16_L_CAM_Fm, VGG16_L_CAM_Img, VGG16_7x7_L_CAM_Img, VGG16_L
 os.chdir('../')
 ROOT_DIR = os.getcwd()
 print('Project Root Dir:',ROOT_DIR)
-IMG_DIR  = r'/m2/ILSVRC2012_img_val'
+txt_path = r"C:\Users\Korisnik\Documents\GitHub\L-CAM\datalist\inbreast\train.txt"
+IMG_DIR  = r'C:\Users\Korisnik\Documents\GitHub\mammography\data\INBREAST\AllDICOMs'
 
-# Static paths
-train_list = os.path.join(ROOT_DIR,'datalist', 'ILSVRC', 'VGG16_train.txt')
-test_list = os.path.join(ROOT_DIR,'datalist','ILSVRC', 'Evaluation_2000.txt')
-Snapshot_dir = os.path.join(ROOT_DIR,'snapshots', 'VGG16_L_CAM_Img')
+Snapshot_dir = os.path.join(ROOT_DIR,'snapshots', 'Mammo_VGG16_Img')
 
 percent = 0
 def get_arguments():
     parser = argparse.ArgumentParser(description='ResNet50_aux_ResNet18_init')
     parser.add_argument("--root_dir", type=str, default=ROOT_DIR)
     parser.add_argument("--img_dir", type=str, default=IMG_DIR)
-    parser.add_argument("--train_list", type=str, default=train_list)
-    parser.add_argument("--test_list", type=str, default=test_list)
+    parser.add_argument("--train_list", type=str, default=txt_path)
+    parser.add_argument("--test_list", type=str, default=txt_path)
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--input_size", type=int, default=256)
     parser.add_argument("--crop_size", type=int, default=224)
@@ -47,7 +45,7 @@ def get_arguments():
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--disp_interval", type=int, default=40)
     parser.add_argument("--snapshot_dir", type=str, default=Snapshot_dir)
-    parser.add_argument("--restore_from", type=str, default= r'/home/xiaolin/.torch/models/vgg16-397923af.pth')
+    parser.add_argument("--restore_from", type=str, default= r"C:\Users\Korisnik\Downloads\imagenet_epoch_7_glo_step_2161.pth.tar")
     parser.add_argument("--resume", type=str, default='True')
     parser.add_argument("--global_counter", type=int, default=0)
     parser.add_argument("--current_epoch", type=int, default=0)
@@ -72,15 +70,15 @@ top5_.reset()
 
 def get_model(args):
     model = eval(args.arch).model()
-    model.cuda()
+    #model.cuda()
     model.eval()
     optimizer = my_optim.get_optimizer(args, model)
     if args.resume == 'True':
-        restore(args, model, optimizer)
+         restore(args, model, optimizer)
     return  model, optimizer
 
 
-train_loader, val_loader = data_loader(args, test_path=True)
+val_loader = mammo_loader(txt_path=txt_path,img_dir=IMG_DIR, batch_size=1)
 global_counter = 0
 prob = None
 gt = None
@@ -89,19 +87,13 @@ if model is None:
     model, _ = get_model(args)
 
 model.eval() 
-model.cuda()
-
-train_loader, val_loader = data_loader(args, test_path=True)
-
-global_counter = 0
-prob = None
-gt = None
+#model.cuda()
 
 
 y_mask_image = []
 y_image = []
 
-model.cuda()
+#model.cuda()
 
 def denormalize(tensor):
     means, stds = torch.tensor([0.485, 0.456, 0.406]), torch.tensor([0.229, 0.224, 0.225])
@@ -117,7 +109,7 @@ for idx, dat  in tqdm(enumerate(val_loader)):
     im = img
     global_counter += 1
     label = label_in
-    img, label = img.cuda(), label.cuda()  
+    #img, label = img.cuda(), label.cuda()
     now = time.time()
 
 

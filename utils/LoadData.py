@@ -1,10 +1,13 @@
 # from torchvision import transforms
+from pydicom import dcmread
+
 from .transforms import transforms
-from torch.utils.data import DataLoader
 from .mydataset import dataset as my_dataset, dataset_with_mask
-import torchvision
 import torch
+from torch.utils.data import Dataset, DataLoader
+import cv2
 import numpy as np
+import os
 
 def data_loader(args, test_path=False, segmentation=False):
 
@@ -41,5 +44,47 @@ def data_loader(args, test_path=False, segmentation=False):
     val_loader = DataLoader(img_test, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
     return train_loader, val_loader
+
+def mammo_loader(txt_path, img_dir, batch_size):
+    class ImageDataset(Dataset):
+        def __init__(self, txt_path, img_dir):
+            self.img_labels = []
+            with open(txt_path, 'r') as file:
+                for line in file:
+                    image_name, label = line.strip().split()
+                    self.img_labels.append((image_name, int(label)))
+            self.img_dir = img_dir
+
+        def __len__(self):
+            return len(self.img_labels)
+
+        def __getitem__(self, idx):
+            # Extract image name and label
+            img_name, label = self.img_labels[idx]
+            img_path = os.path.join(self.img_dir, img_name)
+
+            # Load and preprocess the image
+            image = self.read_img(img_path)
+            image = self.preprocess(image)
+
+            # Return image path, image tensor, and label
+            return img_path, image, label
+
+        def read_img(self, path):
+            image = dcmread(path).pixel_array
+            return image
+
+        def preprocess(self, image):
+            image = ((image - np.min(image)) / (np.max(image) - np.min(image))) * 255.0
+            image = image.astype(np.uint8)
+            image = cv2.resize(image, (896, 1152), interpolation=cv2.INTER_CUBIC)
+            image = image.astype('float32')
+            image = np.stack((image,) * 3, axis=0)  # Stack to create 3 channels
+            # image = np.expand_dims(image, axis=0)  # Add batch dimension
+            image = torch.Tensor(image)
+            return image
+
+    dataset = ImageDataset(txt_path=txt_path, img_dir=img_dir)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 

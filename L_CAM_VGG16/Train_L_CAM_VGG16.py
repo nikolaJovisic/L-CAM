@@ -13,25 +13,27 @@ from torch.autograd import Variable
 import utils
 from utils import AverageMeter
 from utils import Metrics
-from utils.LoadData import data_loader
+from utils.LoadData import mammo_loader
 from utils.Restore import restore
 from utils.Restore import restore
-from models import VGG16_L_CAM_Fm, VGG16_L_CAM_Img, VGG16_7x7_L_CAM_Img
+from models import VGG16_L_CAM_Fm, VGG16_L_CAM_Img, VGG16_7x7_L_CAM_Img, Mammo_VGG16_Img
+from conv_model import CustomCNN, Model1
 # Paths
 os.chdir('../')
 ROOT_DIR = os.getcwd()
 print('Project Root Dir:',ROOT_DIR)
-IMG_DIR  = r'/m2/ILSVRC2012_img_train'
+txt_path = r"C:\Users\Korisnik\Documents\GitHub\L-CAM\datalist\inbreast\train.txt"
+IMG_DIR  = r'C:\Users\Korisnik\Documents\GitHub\mammography\data\INBREAST\AllDICOMs'
 
 # Static paths
-train_list = os.path.join(ROOT_DIR,'datalist', 'ILSVRC', 'VGG16_train.txt')
-test_list = os.path.join(ROOT_DIR,'datalist','ILSVRC', 'Evaluation_2000.txt')
-Snapshot_dir = os.path.join(ROOT_DIR,'snapshots', 'VGG16_L_CAM_Fm')
+train_list = os.path.join(ROOT_DIR,'datalist', 'inbreast', 'train.txt')
+test_list = os.path.join(ROOT_DIR,'datalist','inbreast', 'validation.txt')
+Snapshot_dir = os.path.join(ROOT_DIR,'snapshots', 'Mammo_VGG16_Img')
 
 # Default parameters
 EPOCH = 8
 Batch_size = 64
-disp_interval = 40
+disp_interval = 1
 num_workers = 1
 num_classes = 1000
 dataset = 'imagenet'
@@ -51,7 +53,7 @@ def get_arguments():
     parser.add_argument("--crop_size", type=int, default=224)
     parser.add_argument("--dataset", type=str, default=dataset)
     parser.add_argument("--num_classes", type=int, default=num_classes)
-    parser.add_argument("--arch", type=str,default='VGG16_L_CAM_Fm')
+    parser.add_argument("--arch", type=str,default='Mammo_VGG16_Img')
     parser.add_argument("--lr", type=float, default=LR)
     parser.add_argument("--decay_points", type=str, default='none')
     parser.add_argument("--epoch", type=int, default=EPOCH)
@@ -73,7 +75,7 @@ def save_checkpoint(args, state, is_best, filename='checkpoint.pth.tar'):
 
 def get_model(args):
     model = eval(args.arch).model()                         
-    model.cuda()
+    #model.cuda()
     lr = args.lr
     optimizer = my_optim.get_finetune_optimizer(args, model)
     if args.resume == 'True':
@@ -89,8 +91,6 @@ def set_bn_eval(m):
 def train(args):
     batch_time = AverageMeter()
     losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
     
     losses_meanMask =  AverageMeter() # Mask energy loss
     losses_variationMask = AverageMeter() # Mask variation loss
@@ -99,14 +99,15 @@ def train(args):
 
     model, optimizer= get_model(args)
 
-    for param in model.features.parameters():
+    for param in model.parameters():
         param.requires_grad = False
-    for param in model.classifier.parameters():
-        param.requires_grad = False    
+
+    for param in model.attnM.parameters():
+        param.requires_grad = True
 
     model.apply(set_bn_eval)    
     model.train()   
-    train_loader, _ = data_loader(args)
+    train_loader = mammo_loader(txt_path=txt_path,img_dir=IMG_DIR, batch_size=1)
     
     with open(os.path.join(args.snapshot_dir, 'train_record.csv'), 'a') as fw:
         config = json.dumps(vars(args), indent=4, separators=(',', ':'))
@@ -126,10 +127,7 @@ def train(args):
         losses_variationMask.reset() # Mask variation loss
        # losses_ce_trans.reset()  #  (1-mask)*img cross entropy loss
         losses_ce.reset()  #  (1-mask)*img cross entropy loss
-        
-        
-        top1.reset()
-        top5.reset()
+
         batch_time.reset()
         res = my_optim.reduce_lr(args, optimizer, current_epoch)
 
@@ -142,7 +140,7 @@ def train(args):
             it = it + 1 
             img_path , img, label = dat
             global_counter += 1
-            img, label = img.cuda(), label.cuda()
+            #img, label = img.cuda(), label.cuda()
             img_var, label_var = Variable(img), Variable(label)
 
             logits = model(img_var,  label_var)
@@ -158,13 +156,10 @@ def train(args):
             optimizer.step()
 
             logits1 = torch.squeeze(logits[0])
-            prec1_1, prec5_1 = Metrics.accuracy(logits1.data, label.long(), topk=(1,5))
-            top1.update(prec1_1[0], img.size()[0])
-            top5.update(prec5_1[0], img.size()[0])
 
             losses.update(loss_val.data, img.size()[0])
             losses_meanMask.update(loss_meanMask_val.data, img.size()[0])
-            losses_variationMask.update(loss_variationMask_val.data, img.size()[0])
+            losses_variationMask.update(0, img.size()[0])
            # losses_ce_trans.update(loss_ce_trans_val.data, img.size()[0])
             losses_ce.update(loss_ce_val.data, img.size()[0])
 
@@ -181,9 +176,6 @@ def train(args):
             #    losses_ce_trans.reset()
                 losses_ce.reset()
 
-
-                top1.reset()
-                top5.reset()               
             
             if global_counter % args.disp_interval == 0:
                 eta_seconds = ((total_epoch - current_epoch)*steps_per_epoch + (steps_per_epoch - idx))*batch_time.avg
@@ -196,12 +188,9 @@ def train(args):
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                       'Loss_meanMask {loss_meanMask.val:.4f} ({loss_meanMask.avg:.4f})\t'
                       'Loss_variationMask {loss_variationMask.val:.4f} ({loss_variationMask.avg:.4f})\t'
-                      'Loss_ce {loss_ce.val:.4f} ({loss_ce.avg:.4f})\t'
-                  #    'Loss_ce_trans {loss_ce_trans.val:.4f} ({loss_ce_trans.avg:.4f})\t'
-                      'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                      'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                      'Loss_ce {loss_ce.val:.4f} ({loss_ce.avg:.4f})\t'.format(
                     current_epoch, global_counter%len(train_loader), len(train_loader), batch_time=batch_time,
-                    eta_str=eta_str, eta_str_epoch = eta_str_epoch, loss=losses,loss_meanMask=losses_meanMask,loss_variationMask=losses_variationMask,loss_ce=losses_ce, top1=top1, top5=top5))
+                    eta_str=eta_str, eta_str_epoch = eta_str_epoch, loss=losses,loss_meanMask=losses_meanMask,loss_variationMask=losses_variationMask,loss_ce=losses_ce))
                     
                     
             
