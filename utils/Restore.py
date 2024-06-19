@@ -18,7 +18,7 @@ def restore(args, model, optimizer, istrain=True, including_opt=False):
 
     if os.path.isfile(snapshot):
         print("=> loading checkpoint '{}'".format(snapshot))
-        checkpoint = torch.load(snapshot)
+        checkpoint = torch.load(snapshot, map_location=torch.device('cpu'))
         try:
             if istrain:
                 args.current_epoch = checkpoint['epoch'] + 1

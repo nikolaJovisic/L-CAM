@@ -50,6 +50,7 @@ class MammoVGG16(nn.Module):
         a1, c1 = self.attnM(l)
         self.a = a1
         self.c = c1
+        x_norm = x
 
         if isTrain == True:
             N, C, W, H = a1.size()

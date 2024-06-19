@@ -1,6 +1,8 @@
 # from torchvision import transforms
+from matplotlib import pyplot as plt
 from pydicom import dcmread
 
+from L_CAM_VGG16.preprocess import preprocess_scan
 from .transforms import transforms
 from .mydataset import dataset as my_dataset, dataset_with_mask
 import torch
@@ -87,4 +89,44 @@ def mammo_loader(txt_path, img_dir, batch_size):
     dataset = ImageDataset(txt_path=txt_path, img_dir=img_dir)
     return DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
+def inference_loader(img_dir, batch_size):
+    class ImageDataset(Dataset):
+        def __init__(self, img_dir):
+            self.image_paths = [os.path.join(img_dir, fname) for fname in os.listdir(img_dir)]
 
+        def __len__(self):
+            return len(self.image_paths)
+
+        def __getitem__(self, idx):
+            # Get image path
+            img_path = self.image_paths[idx]
+            # img_path = r"C:\Users\Korisnik\Desktop\f100\DXm.1.2.392.200036.9125.4.0.253575088.152777751.3952890707"
+            # Load and preprocess the image
+            image = self.read_img(img_path)
+
+            cleaned_image, spatial_changes = preprocess_scan(image)
+
+            image = self.preprocess(image)
+            cleaned_image = self.preprocess(cleaned_image)
+
+            return img_path, image, cleaned_image, spatial_changes
+
+        def read_img(self, path):
+            # Load the image from DICOM file
+            image = dcmread(path).pixel_array
+            return image
+
+        def preprocess(self, image):
+            # Normalize and resize the image
+            image, _ = preprocess_scan(image)
+
+            image = ((image - np.min(image)) / (np.max(image) - np.min(image))) * 255.0
+            image = image.astype(np.uint8)
+            image = cv2.resize(image, (896, 1152), interpolation=cv2.INTER_CUBIC)
+            image = image.astype('float32')
+            image = np.stack((image,) * 3, axis=0)  # Stack to create 3 channels
+            image = torch.Tensor(image)
+            return image
+
+    dataset = ImageDataset(img_dir=img_dir)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=True)

@@ -16,7 +16,7 @@ from utils import Metrics
 from utils.LoadData import mammo_loader
 from utils.Restore import restore
 from utils.Restore import restore
-from models import VGG16_L_CAM_Fm, VGG16_L_CAM_Img, VGG16_7x7_L_CAM_Img, Mammo_VGG16_Img
+from models import VGG16_L_CAM_Fm, VGG16_L_CAM_Img, VGG16_7x7_L_CAM_Img, Mammo_VGG16_Img, Mammo_VGG16_Img
 from conv_model import CustomCNN, Model1
 # Paths
 os.chdir('../')
