@@ -25,7 +25,7 @@ from preprocess import preprocess_scan, reverse_spatial_changes
 os.chdir('../')
 ROOT_DIR = os.getcwd()
 print('Project Root Dir:', ROOT_DIR)
-IMG_DIR = r'C:\Users\Korisnik\Desktop\f100'
+IMG_DIR = r'C:\Users\Korisnik\Documents\GitHub\mammography\data\INBREAST\AllDICOMs'
 
 Snapshot_dir = os.path.join(ROOT_DIR, 'snapshots', 'Mammo_VGG16_Img')
 
@@ -84,17 +84,9 @@ def process_img(image):
     cam_map = F.interpolate(cam_map, size=(1152, 896), mode='bilinear', align_corners=False)
     cam_map = Metrics.drop_Npercent(cam_map, args.percentage)
 
-    s_image = np.transpose(image[0].cpu().numpy().astype(np.uint8), (1, 2, 0))
-    s_mask = np.transpose((cam_map[0].cpu().numpy()), (1, 2, 0))
+    s_mask = cam_map[0].cpu().numpy()[0]
 
-    channel0 = s_image[..., 0]
-    channel1 = s_image[..., 1]
-    modified_channel0 = channel0 * s_mask[..., 0]
-    modified_channell = channel1 * s_mask[..., 0]
-    s_image[..., 0] = modified_channel0
-    s_image[..., 1] = modified_channell
-
-    return probability, s_image
+    return probability, s_mask
 
 # Read Images
 for idx, dat in tqdm(enumerate(val_loader)):
@@ -105,10 +97,13 @@ for idx, dat in tqdm(enumerate(val_loader)):
     spatial_changes[2] = [i.numpy()[0] for i in spatial_changes[2]]
     spatial_changes[3] = [i.numpy()[0] for i in spatial_changes[3]]
 
-    spatial_changes[0].extend((0, 0))
-
     probability, heatmap = process_img(clean_img)
     reverted_heatmap = reverse_spatial_changes(heatmap, spatial_changes)
+
+
+    reverted_heatmap = ((reverted_heatmap - np.min(reverted_heatmap)) / (np.max(reverted_heatmap) - np.min(reverted_heatmap))) * 255.0
+    reverted_heatmap = reverted_heatmap.astype(np.uint8)
+    reverted_heatmap = cv2.resize(reverted_heatmap, (896, 1152), interpolation=cv2.INTER_CUBIC)
     print()
     # print(probability)
     # cv2.imshow('map', heatmap)
